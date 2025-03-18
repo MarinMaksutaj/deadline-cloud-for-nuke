@@ -91,6 +91,17 @@ def _remove_gizmo_dir_from_job_template(job_template: dict[str, Any]) -> None:
 
 
 def _add_gizmo_dir_to_job_template(job_template: dict[str, Any]) -> None:
+    # Add GizmoDir parameter definition if it doesn't exist
+    if not any(param["name"] == "GizmoDir" for param in job_template["parameterDefinitions"]):
+        job_template["parameterDefinitions"].append(
+            {
+                "name": "GizmoDir",
+                "type": "STRING",
+                "default": "{{JobBundle.Dir}}/gizmos",
+                "description": "Directory containing gizmo files",
+            }
+        )
+
     if "jobEnvironments" not in job_template:
         job_template["jobEnvironments"] = []
 
@@ -423,6 +434,22 @@ def show_nuke_render_submitter(parent, f=Qt.WindowFlags()) -> "SubmitJobToDeadli
                 step["hostRequirements"] = host_requirements
 
         parameter_values = _get_parameter_values(settings, queue_parameters)
+
+        # If gizmos are included, create a gizmos directory in the job bundle
+        if settings.include_gizmos_in_job_bundle:
+            from .assets import find_gizmo_files
+
+            gizmo_files = find_gizmo_files()
+            if gizmo_files:
+                gizmo_dir = job_bundle_path / "gizmos"
+                gizmo_dir.mkdir(exist_ok=True)
+
+                # Copy gizmo files to the job bundle
+                for gizmo_file in gizmo_files:
+                    gizmo_filename = os.path.basename(gizmo_file)
+                    target_path = gizmo_dir / gizmo_filename
+                    with open(gizmo_file, "rb") as src, open(target_path, "wb") as dst:
+                        dst.write(src.read())
 
         with open(job_bundle_path / "template.yaml", "w", encoding="utf8") as f:
             deadline_yaml_dump(job_template, f, indent=1)

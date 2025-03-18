@@ -17,6 +17,7 @@ FRAME_REGEX = re.compile(r"(#+)|%(\d*)d", re.IGNORECASE)
 FILE_KNOB_CLASS = "File_Knob"
 NUKE_WRITE_NODE_CLASSES: set[str] = {"Write", "DeepWrite", "WriteGeo"}
 JOB_ID_REGEX = re.compile(r"^job-[0-9a-z]{32}$")
+GIZMO_FILE_EXTENSION = ".gizmo"
 
 
 def get_nuke_script_file() -> str:
@@ -80,6 +81,17 @@ def get_scene_asset_references() -> AssetReferences:
             for filename in get_node_filenames(node):
                 asset_references.output_directories.add(dirname(filename))
 
+    # Add gizmo files to input filenames if the option is enabled
+    from deadline.nuke_submitter.data_classes import RenderSubmitterUISettings
+
+    settings = RenderSubmitterUISettings()
+    settings.load_sticky_settings(script_file)
+
+    if settings.include_gizmos_in_job_bundle:
+        gizmo_files = find_gizmo_files()
+        for gizmo_file in gizmo_files:
+            asset_references.input_filenames.add(gizmo_file)
+
     if nuke_ocio.is_OCIO_enabled():
         # Determine and add the config file and associated search directories
         ocio_config_path = nuke_ocio.get_ocio_config_path()
@@ -100,6 +112,31 @@ def get_scene_asset_references() -> AssetReferences:
                 )
 
     return asset_references
+
+
+def find_gizmo_files() -> set[str]:
+    """
+    Find all .gizmo files used in the current Nuke script.
+
+    Returns:
+        A set of absolute paths to .gizmo files used in the script.
+    """
+    gizmo_files = set()
+
+    # Iterate through all nodes in the script
+    for node in nuke.allNodes(recurseGroups=True):
+        # Check if the node is a Gizmo
+        if node.Class() == "Gizmo":
+            # Get the gizmo file path from the node
+            gizmo_file = node.filename()
+            if (
+                gizmo_file
+                and os.path.isfile(gizmo_file)
+                and gizmo_file.endswith(GIZMO_FILE_EXTENSION)
+            ):
+                gizmo_files.add(normpath(gizmo_file))
+
+    return gizmo_files
 
 
 def find_all_write_nodes() -> set:
